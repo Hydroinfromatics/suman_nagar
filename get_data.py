@@ -31,7 +31,7 @@ def fetch_data_from_api(api_url):
         "Authorization": f"Bearer {token}"
     }
     
-    response = requests.get(api_url + "/dadpur_data", headers=headers)
+    response = requests.get(api_url + "/suman_nagar_data", headers=headers)
     
     if response.status_code == 200:
         return response.json()
