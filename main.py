@@ -159,7 +159,7 @@ def update_dashboard(n, selected_column):
         y_min, y_max = Y_RANGES.get(selected_column, [None, None])
         
         fig.update_layout(
-            title=f'{selected_column} over Time',
+            title=f'{selected_column} Vs Time',
             xaxis_title='Time',
             yaxis_title=selected_column,
             yaxis=dict(range=[y_min, y_max]),
