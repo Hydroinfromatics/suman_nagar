@@ -59,11 +59,12 @@ COLORS = {'accent': '#e74c3c'}
 # Y-axis ranges for each parameter
 Y_RANGES = {
     "source_pH": [0, 14],
-    "source_TDS": [0, 1000],
-    "source_FRC": [0, 5],
-    "source_pressure": [0, 100],
-    "source_flow": [0, 2]
+    "source_TDS": [0, 500],
+    "source_FRC": [-1, 1],
+    "source_pressure": [-2, 2],
+    "source_flow": [0, 30]
 }
+
 
 # Create the Folium map
 def create_map():
