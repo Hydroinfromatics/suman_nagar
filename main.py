@@ -21,12 +21,14 @@ header = html.Div([
         html.H3("Suman Nagar", style={'text-align':'center', 'color':'#010738'}),
     ], style={'text-align': 'center', 'flex-grow':'1'}),
     html.Img(src="assets/itc.png", style={'height':'90px', 'width':'auto', 'float':'right'}),
+    html.Img(src="assets/eyenetAqua.png", style={'height':'90px', 'width':'auto', 'float':'right'}),
 ], style={'display':'flex', 'justify-content':'space-between', 'align-items':'center', 'background-color':'#f5f5f5', 'padding':'2px'})
 
 # Footer
 footer = html.Footer([
     html.Div([
         html.P('Water Quality Dashboard - Powered by ICCW ', style={'textAlign': 'center', 'fontSize': '12px'}),
+        html.P('Technology Implementation Partner - Powered by EyeNet Aqua', style={'textAlign': 'center', 'fontSize': '12px'}),
     ], style={'padding': '10px', 'backgroundColor': '#f0f0f0', 'marginTop': '20px'})
 ])
 
