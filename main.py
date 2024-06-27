@@ -85,7 +85,7 @@ app.layout = html.Div([
     ], style={'display': 'flex', 'flexWrap': 'wrap', 'justifyContent': 'space-around', 'margin': '20px 0'}),
     html.Div([
         html.Br(),
-        html.P("Select Column:"),
+        html.P("Select Parameter:"),
         dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_pH", clearable=False),
         dcc.Graph(id="graph")
     ]),
