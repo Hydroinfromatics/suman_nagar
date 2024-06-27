@@ -6,6 +6,8 @@ from data_process import process_data
 from get_data import fetch_data_from_api
 import traceback
 import os
+import folium
+from folium.plugins import MarkerCluster
 
 # Initialize the Dash app
 app = dash.Dash(__name__)
@@ -15,83 +17,117 @@ API_URL = "https://mongodb-api-hmeu.onrender.com"
 
 # Styles
 HEADER_STYLE = {
+    'width': '100%',
+    'background-color': '#f5f5f5',
+    'padding': '10px 0',
+    'box-shadow': '0 2px 5px rgba(0,0,0,0.1)'
+}
+
+HEADER_CONTENT_STYLE = {
     'display': 'flex',
     'justify-content': 'space-between',
     'align-items': 'center',
-    'background-color': '#f5f5f5',
-    'padding': '10px',
-    'box-shadow': '0 2px 5px rgba(0,0,0,0.1)'
+    'max-width': '1200px',
+    'margin': '0 auto',
+    'padding': '0 20px'
 }
 
-VALUE_BOX_STYLE = {
-    'display': 'inline-block',
-    'margin': '10px',
-    'padding': '15px',
-    'width': '18%',
-    'height': '120px',
-    'background-color': 'white',
-    'font-weight': 'bold',
-    'font-size': '16px',
-    'border-radius': '10px',
-    'box-shadow': '0 2px 5px rgba(0,0,0,0.1)',
+MAP_STYLE = {
+    'width': '100%',
+    'height': '600px',
+    'border': '1px solid #ddd',
+    'border-radius': '5px',
+}
+
+FOOTER_STYLE = {
+    'width': '100%',
+    'background-color': '#f0f0f0',
+    'padding': '20px 0',
+    'margin-top': '20px'
+}
+
+FOOTER_CONTENT_STYLE = {
+    'max-width': '1200px',
+    'margin': '0 auto',
+    'padding': '0 20px',
     'text-align': 'center'
-}
-
-CHART_STYLE = {
-    'margin': '20px 0',
-    'padding': '20px',
-    'background-color': 'white',
-    'border-radius': '10px',
-    'box-shadow': '0 2px 5px rgba(0,0,0,0.1)'
 }
 
 COLUMNS = ["source_pH", "source_TDS", "source_FRC", "source_pressure", "source_flow"]
 COLORS = {'accent': '#e74c3c'}
 
+# Y-axis ranges for each parameter
 Y_RANGES = {
     "source_pH": [0, 14],
     "source_TDS": [0, 1000],
     "source_FRC": [0, 5],
     "source_pressure": [0, 100],
-    "source_flow": [0, 40]
+    "source_flow": [0, 2]
 }
+
+# Create the Folium map
+def create_map():
+    # Updated coordinates for Suman Nagar, Haridwar
+    suman_nagar_coords = [29.9456, 78.1645]  # Note: These are approximate coordinates, please verify
+    m = folium.Map(location=suman_nagar_coords, zoom_start=14)
+    folium.Marker(
+        suman_nagar_coords,
+        popup="Suman Nagar, Haridwar",
+        tooltip="Suman Nagar"
+    ).add_to(m)
+    map_html = m.get_root().render()
+    return map_html
 
 # Header
 header = html.Div([
-    html.Img(src="assets/logo.png", style={'height': '80px', 'width': 'auto'}),
     html.Div([
-        html.H1("Water Monitoring Unit", style={'text-align': 'center', 'color': '#010738', 'margin': '0'}),
-        html.H3("Suman Nagar", style={'text-align': 'center', 'color': '#010738', 'margin': '8px 0 0 0'}),
-    ]),
-    html.Img(src="assets/itc.png", style={'height': '80px', 'width': 'auto', 'float': 'right'}),
-    html.Img(src="assets/EyeNet Aqua.png", style={'height': '90px', 'width': 'auto', 'float': 'right'}),
+        html.Img(src="assets/logo.png", style={'height': '80px', 'width': 'auto'}),
+        html.Div([
+            html.H1("Water Monitoring Unit", style={'text-align': 'center', 'color': '#010738', 'margin': '0'}),
+            html.H3("Suman Nagar", style={'text-align': 'center', 'color': '#010738', 'margin': '8px 0 0 0'}),
+        ]),
+        html.Div([
+            html.Img(src="assets/itc.png", style={'height': '80px', 'width': 'auto', 'marginRight': '10px'}),
+            html.Img(src="assets/EyeNet Aqua.png", style={'height': '90px', 'width': 'auto'}),
+        ], style={'display': 'flex', 'alignItems': 'center'})
+    ], style=HEADER_CONTENT_STYLE)
 ], style=HEADER_STYLE)
 
 # Footer
 footer = html.Footer([
     html.Div([
-        html.P('Dashboard - Powered by ICCW  ', style={'textAlign': 'center', 'fontSize': '12px'}),
-        html.P('Technology Implementation Partner - EyeNet Aqua', style={'textAlign': 'center', 'fontSize': '12px'}),
-    ], style={'padding': '10px', 'backgroundColor': '#f0f0f0', 'marginTop': '20px'})
-])
+        html.P('Dashboard - Powered by ICCW', style={'fontSize': '12px', 'margin': '5px 0'}),
+        html.P('Technology Implementation Partner - EyeNet Aqua', style={'fontSize': '12px', 'margin': '5px 0'}),
+    ], style=FOOTER_CONTENT_STYLE)
+], style=FOOTER_STYLE)
 
 # Layout of the dashboard
 app.layout = html.Div([
     header,
-    html.Div(id='error-message', style={'color': COLORS['accent'], 'textAlign': 'center', 'margin': '10px 0'}),
     html.Div([
-        html.Div(id=f'source-{param.lower()}', className='value-box')
-        for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']
-    ], style={'display': 'flex', 'flexWrap': 'wrap', 'justifyContent': 'space-around', 'margin': '20px 0'}),
-    html.Div([
-        html.Br(),
-        html.P("Select Parameter:"),
-        dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_pH", clearable=False),
-        dcc.Graph(id="graph")
-    ]),
-    footer,
-    dcc.Interval(id='interval-component', interval=60000, n_intervals=0)
-], style={'fontFamily': 'Arial, sans-serif', 'margin': '0 auto', 'maxWidth': '1200px', 'backgroundColor': '#f9f9f9'})
+        html.Div(id='error-message', style={'color': COLORS['accent'], 'textAlign': 'center', 'margin': '10px 0'}),
+        html.Div([
+            html.Div(id=f'source-{param.lower()}', className='value-box')
+            for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']
+        ], style={'display': 'flex', 'flexWrap': 'wrap', 'justifyContent': 'space-around', 'margin': '20px 0'}),
+        html.Div([
+            # Left column for chart
+            html.Div([
+                html.P("Select Column:"),
+                dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_pH", clearable=False),
+                dcc.Graph(id="graph", style={'height': '600px'})
+            ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+            
+            # Right column for map
+            html.Div([
+                html.H3("Suman Nagar, Haridwar Map", style={'textAlign': 'center'}),
+                html.Iframe(srcDoc=create_map(), style=MAP_STYLE)
+            ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
+        ], style={'display': 'flex', 'justifyContent': 'space-between'}),
+        dcc.Interval(id='interval-component', interval=60000, n_intervals=0)
+    ], style={'maxWidth': '1200px', 'margin': '0 auto', 'padding': '0 20px'}),
+    footer
+], style={'fontFamily': 'Arial, sans-serif', 'backgroundColor': '#f9f9f9'})
 
 @app.callback(
     [Output('error-message', 'children')] +
@@ -126,7 +162,7 @@ def update_dashboard(n, selected_column):
             xaxis_title='Time',
             yaxis_title=selected_column,
             yaxis=dict(range=[y_min, y_max]),
-            height=400,
+            height=600,
             margin=dict(l=50, r=50, t=50, b=50),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
@@ -145,7 +181,6 @@ def update_dashboard(n, selected_column):
             value_boxes.append(value_box)
 
         return [None] + value_boxes + [fig]
-
     
     except Exception as e:
         print(traceback.format_exc())
