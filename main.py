@@ -1,13 +1,15 @@
 import dash
-from dash import dcc, html
-from dash.dependencies import Input, Output
+from dash import dcc, html, dash_table
+from dash.dependencies import Input, Output, State
 import plotly.graph_objs as go
 from data_process import process_data
 from get_data import fetch_data_from_api
 import traceback
 import os
-import folium
-from folium.plugins import MarkerCluster
+import pandas as pd
+from datetime import datetime, timedelta
+import leafmap.foliumap as leafmap
+import geopandas as gpd
 
 # Initialize the Dash app
 app = dash.Dash(__name__)
@@ -15,7 +17,7 @@ app = dash.Dash(__name__)
 # API endpoint
 API_URL = "https://mongodb-api-hmeu.onrender.com"
 
-# Styles
+# Styles (unchanged, keeping the existing styles)
 HEADER_STYLE = {
     'width': '100%',
     'background-color': '#f5f5f5',
@@ -58,26 +60,57 @@ COLORS = {'accent': '#e74c3c'}
 
 # Y-axis ranges for each parameter
 Y_RANGES = {
-    "source_pH": [0, 14],
+    "source_pH": [6, 9],
     "source_TDS": [0, 500],
-    "source_FRC": [-1, 1],
-    "source_pressure": [-2, 2],
-    "source_flow": [0, 30]
+    "source_FRC": [0,0.1],
+    "source_pressure": [0,2],
+    "source_flow": [0, 20]
 }
 
+# Paths to your GeoJSON files
+#geojson_path1 = r"Dadapur.geojson"
+geojson_path2 = r"SumanNagar.geojson"
 
-# Create the Folium map
+# Read the GeoJSON files
+#gdf1 = gpd.read_file(geojson_path1)
+gdf2 = gpd.read_file(geojson_path2)
+
+# Create the leafmap Map
 def create_map():
-    # Updated coordinates for Suman Nagar, Haridwar
-    suman_nagar_coords = [29.9456, 78.1645]  # Note: These are approximate coordinates, please verify
-    m = folium.Map(location=suman_nagar_coords, zoom_start=14)
-    folium.Marker(
-        suman_nagar_coords,
-        popup="Suman Nagar, Haridwar",
-        tooltip="Suman Nagar"
-    ).add_to(m)
-    map_html = m.get_root().render()
-    return map_html
+    m = leafmap.Map(center=[gdf2.geometry.centroid.y.mean(), gdf2.geometry.centroid.x.mean()], zoom=11)
+
+    # Add the first GeoJSON layer (points)
+    '''m.add_gdf(
+        gdf1,
+        layer_name="Dadupur",
+        zoom_to_layer=False,
+        info_mode='on_click',
+        style_function=lambda feature: {
+            'fillColor': 'blue',
+            'color': 'black',
+            'weight': 2,
+            'fillOpacity': 0.7
+        }
+    )
+'''
+    # Add the second GeoJSON layer (zones)
+    m.add_gdf(
+        gdf2,
+        layer_name="Suman Nagar",
+        zoom_to_layer=False,
+        info_mode='on_hover',
+        style_function=lambda feature: {
+            'fillColor': 'green',
+            'color': 'black',
+            'weight': 2,
+            'fillOpacity': 0.3
+        }
+    )
+
+    # Add layer control
+    m.add_layer_control()
+
+    return m.to_html()
 
 # Header
 header = html.Div([
@@ -114,8 +147,8 @@ app.layout = html.Div([
         html.Div([
             # Left column for chart
             html.Div([
-                html.P("Select Column:"),
-                dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_pH", clearable=False),
+                html.P("Select Parameter:"),
+                dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_flow", clearable=False),
                 dcc.Graph(id="graph", style={'height': '600px'})
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             
@@ -125,7 +158,32 @@ app.layout = html.Div([
                 html.Iframe(srcDoc=create_map(), style=MAP_STYLE)
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
         ], style={'display': 'flex', 'justifyContent': 'space-between'}),
-        dcc.Interval(id='interval-component', interval=60000, n_intervals=0)
+        
+        # Historical data section
+        html.Div([
+            html.H3("Historical Data", style={'textAlign': 'center', 'marginTop': '20px'}),
+            html.Div([
+                html.Label("Select Date Range:"),
+                dcc.DatePickerRange(
+                    id='date-picker-range',
+                    start_date=datetime.now().date() - timedelta(days=7),
+                    end_date=datetime.now().date(),
+                    display_format='YYYY-MM-DD'
+                ),
+                html.Button('View Data', id='view-data-button', n_clicks=0, style={'marginLeft': '10px'})
+            ], style={'marginBottom': '20px'}),
+            dash_table.DataTable(
+                id='historical-data-table',
+                columns=[{"name": i, "id": i} for i in COLUMNS + ['timestamp']],
+                page_size=10,
+                style_table={'overflowX': 'auto'}
+            ),
+            html.Button('Download CSV', id='download-csv-button', n_clicks=0, style={'marginTop': '10px'}),
+            dcc.Download(id="download-dataframe-csv"),
+        ]),
+        
+        dcc.Interval(id='interval-component', interval=60000, n_intervals=0),
+        dcc.Store(id='historical-data-store')
     ], style={'maxWidth': '1200px', 'margin': '0 auto', 'padding': '0 20px'}),
     footer
 ], style={'fontFamily': 'Arial, sans-serif', 'backgroundColor': '#f9f9f9'})
@@ -159,7 +217,7 @@ def update_dashboard(n, selected_column):
         y_min, y_max = Y_RANGES.get(selected_column, [None, None])
         
         fig.update_layout(
-            title=f'{selected_column} Vs Time',
+            title=f'{selected_column} over Time',
             xaxis_title='Time',
             yaxis_title=selected_column,
             yaxis=dict(range=[y_min, y_max]),
@@ -172,6 +230,7 @@ def update_dashboard(n, selected_column):
 
         # Get latest values
         latest = df.iloc[-1]
+        
         value_boxes = []
         for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']:
             value = latest.get(f'source_{param}', 'N/A')
@@ -189,6 +248,50 @@ def update_dashboard(n, selected_column):
         empty_values = "Error"
         empty_figure = go.Figure().add_annotation(x=2, y=2, text="Error occurred", showarrow=False)
         return [error_message] + [empty_values] * 5 + [empty_figure]
+
+@app.callback(
+    Output('historical-data-store', 'data'),
+    [Input('view-data-button', 'n_clicks')],
+    [State('date-picker-range', 'start_date'),
+     State('date-picker-range', 'end_date')]
+)
+def fetch_historical_data(n_clicks, start_date, end_date):
+    if n_clicks > 0:
+        try:
+            # Fetch all data from the API
+            data = fetch_data_from_api(API_URL)
+            df = process_data(data)
+            
+            # Filter data based on the selected date range
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            mask = (df['timestamp'].dt.date >= pd.to_datetime(start_date).date()) & \
+                   (df['timestamp'].dt.date <= pd.to_datetime(end_date).date())
+            filtered_df = df.loc[mask]
+            
+            return filtered_df.to_dict('records')
+        except Exception as e:
+            print(traceback.format_exc())
+            return []
+    return []
+
+@app.callback(
+    Output('historical-data-table', 'data'),
+    [Input('historical-data-store', 'data')]
+)
+def update_table(data):
+    if data:
+        return data
+    return []
+
+@app.callback(
+    Output("download-dataframe-csv", "data"),
+    [Input("download-csv-button", "n_clicks")],
+    [State('historical-data-store', 'data')]
+)
+def download_csv(n_clicks, data):
+    if n_clicks > 0 and data:
+        df = pd.DataFrame(data)
+        return dcc.send_data_frame(df.to_csv, "historical_data.csv", index=False)
 
 # Run the app
 if __name__ == '__main__':
