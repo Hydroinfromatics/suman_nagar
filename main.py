@@ -17,7 +17,7 @@ app = dash.Dash(__name__)
 # API endpoint
 API_URL = "https://mongodb-api-hmeu.onrender.com"
 
-# Styles (unchanged, keeping the existing styles)
+# Styles
 HEADER_STYLE = {
     'width': '100%',
     'background-color': '#f5f5f5',
@@ -55,6 +55,17 @@ FOOTER_CONTENT_STYLE = {
     'text-align': 'center'
 }
 
+DROPDOWN_CONTAINER_STYLE = {
+    'display': 'flex',
+    'justifyContent': 'space-between',
+    'alignItems': 'center',
+    'marginBottom': '20px'
+}
+
+DROPDOWN_STYLE = {
+    'width': '200px'
+}
+
 COLUMNS = ["source_pH", "source_TDS", "source_FRC", "source_pressure", "source_flow"]
 COLORS = {'accent': '#e74c3c'}
 
@@ -65,6 +76,17 @@ Y_RANGES = {
     "source_FRC": [0,0.1],
     "source_pressure": [0,2],
     "source_flow": [0, 20]
+}
+
+# Time duration options
+TIME_DURATIONS = {
+    '1 Hour': timedelta(hours=1),
+    '3 Hours': timedelta(hours=3),
+    '6 Hours': timedelta(hours=6),
+    '12 Hours': timedelta(hours=12),
+    '24 Hours': timedelta(hours=24),
+    '3 Days': timedelta(days=3),
+    '1 Week': timedelta(weeks=1)
 }
 
 # Paths to your GeoJSON files
@@ -80,8 +102,8 @@ def create_map():
     m = leafmap.Map(center=[gdf2.geometry.centroid.y.mean(), gdf2.geometry.centroid.x.mean()], zoom=11)
 
     # Add the first GeoJSON layer (points)
-    '''m.add_gdf(
-        gdf1,
+    m.add_gdf(
+        gdf2,
         layer_name="Dadupur",
         zoom_to_layer=False,
         info_mode='on_click',
@@ -90,20 +112,6 @@ def create_map():
             'color': 'black',
             'weight': 2,
             'fillOpacity': 0.7
-        }
-    )
-'''
-    # Add the second GeoJSON layer (zones)
-    m.add_gdf(
-        gdf2,
-        layer_name="Suman Nagar",
-        zoom_to_layer=False,
-        info_mode='on_hover',
-        style_function=lambda feature: {
-            'fillColor': 'green',
-            'color': 'black',
-            'weight': 2,
-            'fillOpacity': 0.3
         }
     )
 
@@ -147,14 +155,34 @@ app.layout = html.Div([
         html.Div([
             # Left column for chart
             html.Div([
-                html.P("Select Parameter:"),
-                dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_flow", clearable=False),
+                html.Div([
+                    html.Div([
+                        html.P("Select Parameter:", style={'marginBottom': '5px'}),
+                        dcc.Dropdown(
+                            id="dist_column",
+                            options=COLUMNS,
+                            value="source_flow",
+                            clearable=False,
+                            style=DROPDOWN_STYLE
+                        )
+                    ], style={'flex': 1, 'marginRight': '10px'}),
+                    html.Div([
+                        html.P("Select Time Duration:", style={'marginBottom': '5px'}),
+                        dcc.Dropdown(
+                            id="time_duration",
+                            options=[{'label': k, 'value': k} for k in TIME_DURATIONS.keys()],
+                            value='24 Hours',
+                            clearable=False,
+                            style=DROPDOWN_STYLE
+                        )
+                    ], style={'flex': 1})
+                ], style=DROPDOWN_CONTAINER_STYLE),
                 dcc.Graph(id="graph", style={'height': '600px'})
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             
             # Right column for map
             html.Div([
-                html.H3("Suman Nagar, Haridwar Map", style={'textAlign': 'center'}),
+                html.H3("Dadupur, Haridwar Map", style={'textAlign': 'center'}),
                 html.Iframe(srcDoc=create_map(), style=MAP_STYLE)
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
         ], style={'display': 'flex', 'justifyContent': 'space-between'}),
@@ -193,9 +221,10 @@ app.layout = html.Div([
     [Output(f'source-{param.lower()}', 'children') for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']] +
     [Output('graph', 'figure')],
     [Input('interval-component', 'n_intervals'),
-     Input('dist_column', 'value')]
+     Input('dist_column', 'value'),
+     Input('time_duration', 'value')]
 )
-def update_dashboard(n, selected_column):
+def update_dashboard(n, selected_column, selected_duration):
     try:
         data = fetch_data_from_api(API_URL)
         df = process_data(data)
@@ -206,18 +235,23 @@ def update_dashboard(n, selected_column):
             empty_figure = go.Figure().add_annotation(x=2, y=2, text="No data available", showarrow=False)
             return [error_message] + [empty_values] * 5 + [empty_figure]
 
-        # Limit to last 1 day data points
-        df = df.tail(180)
+        # Convert timestamp to datetime
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+        # Filter data based on selected duration
+        end_time = df['timestamp'].max()
+        start_time = end_time - TIME_DURATIONS[selected_duration]
+        df_filtered = df[(df['timestamp'] >= start_time) & (df['timestamp'] <= end_time)]
 
         # Create figure for selected column
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df[selected_column], mode='lines+markers', line=dict(color='green')))
+        fig.add_trace(go.Scatter(x=df_filtered['timestamp'], y=df_filtered[selected_column], mode='lines+markers', line=dict(color='green')))
         
         # Get y-axis range for the selected column
         y_min, y_max = Y_RANGES.get(selected_column, [None, None])
         
         fig.update_layout(
-            title=f'{selected_column} over Time',
+            title=f'{selected_column} over the last {selected_duration}',
             xaxis_title='Time',
             yaxis_title=selected_column,
             yaxis=dict(range=[y_min, y_max]),
