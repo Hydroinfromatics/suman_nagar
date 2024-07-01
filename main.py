@@ -182,7 +182,7 @@ app.layout = html.Div([
             
             # Right column for map
             html.Div([
-                html.H3(Suman Nagar, Haridwar Map", style={'textAlign': 'center'}),
+                html.H3("Suman Nagar, Haridwar Map", style={'textAlign': 'center'}),
                 html.Iframe(srcDoc=create_map(), style=MAP_STYLE)
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
         ], style={'display': 'flex', 'justifyContent': 'space-between'}),
