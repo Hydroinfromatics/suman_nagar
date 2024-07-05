@@ -34,6 +34,15 @@ TIME_DURATIONS = {
     '1 Week': timedelta(weeks=1)
 }
 
+# Units for parameters
+UNITS = {
+    "pH": "",
+    "TDS": "ppm",
+    "FRC": "ppm",
+    "pressure": "bar",
+    "flow": "kL per 10 min"
+}
+
 # Initialize Flask
 server = Flask(__name__)
 server.config['SECRET_KEY'] = os.urandom(24)
@@ -51,10 +60,11 @@ gdf = load_geojson()
 
 # Create map
 def create_map():
+    
     m = leafmap.Map(center=[gdf.geometry.centroid.y.mean(), gdf.geometry.centroid.x.mean()], zoom=11)
     m.add_gdf(
         gdf,
-        layer_name="Dadupur",
+        layer_name="Suman_Nagar",
         zoom_to_layer=False,
         info_mode='on_click',
         style_function=lambda feature: {
@@ -97,13 +107,14 @@ def create_header():
             ], style={'display': 'flex', 'alignItems': 'center'})
         ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'maxWidth': '1200px', 'margin': '0 auto', 'padding': '0 20px'})
     ], style={'width': '100%', 'backgroundColor': '#f5f5f5', 'padding': '10px 0', 'boxShadow': '0 2px 5px rgba(0,0,0,0.1)'})
+
 def create_footer():
     return html.Footer([
         html.Div([
             html.P('Dashboard - Powered by ICCW', style={'fontSize': '12px', 'margin': '5px 0'}),
             html.P('Technology Implementation Partner - EyeNet Aqua', style={'fontSize': '12px', 'margin': '5px 0'}),
         ], style={'maxWidth': '1200px', 'margin': '0 auto', 'padding': '0 20px', 'textAlign': 'center'})
-    ], style={'width': '100%', 'backgroundColor': '#f0f0f0', 'padding': '20px 0', 'marginTop': '20px'})
+    ], style={'width': '100%', 'backgroundColor': '#f9f9f9', 'padding': '20px 0', 'marginTop': '20px','boxShadow': '0 2px 5px rgba(0,0,0,0.1)'})
 
 # Dash layout
 app.layout = html.Div([
@@ -114,12 +125,18 @@ app.layout = html.Div([
                  style={
         'display': 'flex',
         'flexWrap': 'wrap',
+        "margin": "15px",
         'justifyContent': 'space-around',
         'alignItems': 'center',
         'margin': '20px 0',
         'padding': '20px',
         'backgroundColor': '#ffffff',
-        'border': '2px solid #333',
+        "font-weight": "bold",
+        "font-size": "30px",
+        "color": "black",
+        "text-align": "center",
+        "box-shadow": "0px 4px 8px rgba(0, 0, 0, 0.1)",
+        'border': '1px solid #7ec1fd',
         'borderRadius': '10px'}),
         html.Div([
             html.Div([
@@ -188,16 +205,16 @@ def update_dashboard(n, selected_column, selected_duration):
         y_min, y_max = Y_RANGES.get(selected_column, [None, None])
         
         fig.update_layout(
-            title=f'{selected_column} over the last {selected_duration}',
-            xaxis_title='Time', yaxis_title=selected_column, yaxis=dict(range=[y_min, y_max]),
+            title=f'{selected_column} Vs {selected_duration}',
+            xaxis_title='Time (hrs)', yaxis_title=f'{selected_column} ({UNITS[selected_column.split("_")[1]]})', yaxis=dict(range=[y_min, y_max]),
             height=600, margin=dict(l=50, r=50, t=50, b=50),
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(size=14)
         )
 
         latest = df.iloc[-1]
         value_boxes = [html.Div([
-            html.Div(f"Source {param}", style={'fontSize': '14px', 'marginBottom': '5px'}),
-            html.Div(f"{latest.get(f'source_{param}', 'N/A')}", style={'fontSize': '24px'})
+            html.Div(f"Source {param}", style={'fontSize': '18px', 'marginBottom': '5px'}),
+            html.Div(f"{latest.get(f'source_{param}', 'N/A')}  {UNITS[param]}", style={'fontSize': '18px'})
         ]) for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']]
 
         return [None] + value_boxes + [fig]
