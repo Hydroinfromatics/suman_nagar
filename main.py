@@ -102,7 +102,7 @@ def create_header():
                 html.H3("Suman Nagar", style={'text-align': 'center', 'color': '#010738', 'margin': '8px 0 0 0'}),
             ]),
             html.Div([
-                html.Img(src="/static/itc.jpeg", style={'height': '80px', 'width': 'auto', 'marginRight': '10px'}),
+                html.Img(src="/static/itc_logo.png", style={'height': '80px', 'width': 'auto', 'marginRight': '10px'}),
                 html.Img(src="/static/EyeNet Aqua.png", style={'height': '90px', 'width': 'auto'}),
             ], style={'display': 'flex', 'alignItems': 'center'})
         ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'maxWidth': '1200px', 'margin': '0 auto', 'padding': '0 20px'})
