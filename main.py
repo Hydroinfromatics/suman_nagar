@@ -6,8 +6,10 @@ from dash.dependencies import Input, Output, State
 import plotly.graph_objs as go
 import pandas as pd
 from datetime import datetime, timedelta
-import leafmap.foliumap as leafmap
 import geopandas as gpd
+import folium
+from folium.plugins import MarkerCluster
+from branca.colormap import LinearColormap
 from functools import lru_cache
 
 # Import custom modules
@@ -59,23 +61,83 @@ def load_geojson():
 gdf = load_geojson()
 
 # Create map
+# Load and process Excel data
+@lru_cache(maxsize=None)
+def load_excel_data():
+    df = pd.read_excel('BOTH_WQ.xlsx', sheet_name="Suman_Nagar")
+    return gpd.GeoDataFrame(
+        df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude), crs="EPSG:4326"
+    )
+
+gdf = load_geojson()
+excel_gdf = load_excel_data()
+
 def create_map():
+    # Convert to EPSG:4326 once
+    excel_gdf_4326 = excel_gdf.to_crs(epsg=4326)
     
-    m = leafmap.Map(center=[gdf.geometry.centroid.y.mean(), gdf.geometry.centroid.x.mean()], zoom=11)
-    m.add_gdf(
+    # Calculate map center
+    map_center = [excel_gdf_4326.geometry.y.mean(), excel_gdf_4326.geometry.x.mean()]
+    m = folium.Map(location=map_center, zoom_start=12)
+    
+    # Create colormap
+    colormap_tds = LinearColormap(
+        colors=['green', 'yellow', 'red'],
+        vmin=excel_gdf_4326['Total Dissolved Solids (TDS)'].min(),
+        vmax=excel_gdf_4326['Total Dissolved Solids (TDS)'].max(),
+        caption='Total Dissolved Solids (TDS)'
+    )
+    
+    # Create marker cluster
+    marker_cluster_tds = MarkerCluster(name="TDS Data").add_to(m)
+    
+    # Function to create popup content
+    def create_popup_content(row):
+        return f"""
+        Village: {row['Village']}<br>
+        pH: {row['pH']}<br>
+        TDS: {row['Total Dissolved Solids (TDS)']} mg/L<br>
+        FRC: {row['Free Residual Chlorine (FRC)']} mg/L<br>
+        Altitude: {row['Altitude']} m<br>
+        Pressure: {row['Pressure']} (bar)<br>
+        Tap Flow Rate: {row['Tap Flow Rate']} (m3)<br>
+        """
+    
+    # Add markers for each point
+    for idx, row in excel_gdf_4326.iterrows():
+        # Determine the fill color based on the TDS value
+        fill_color = colormap_tds(row['Total Dissolved Solids (TDS)'])
+        
+        # TDS marker (now a small dot)
+        folium.CircleMarker(
+            location=[row.geometry.y, row.geometry.x],
+            radius=3,  # Small radius for dot-like appearance
+            popup=folium.Popup(create_popup_content(row), max_width=300),
+            tooltip=row['Village'],
+            color=fill_color,
+            fillColor=fill_color,
+            fillOpacity=1,
+            weight=2
+        ).add_to(marker_cluster_tds)
+    
+    # Add Dadupur GeoJSON
+    folium.GeoJson(
         gdf,
-        layer_name="Suman_Nagar",
-        zoom_to_layer=False,
-        info_mode='on_click',
+        name="Dadupur",
         style_function=lambda feature: {
             'fillColor': 'blue',
             'color': 'black',
             'weight': 2,
-            'fillOpacity': 0.7
-        }
-    )
-    m.add_layer_control()
-    return m.to_html()
+            'fillOpacity': 0.1
+        },
+        tooltip=folium.GeoJsonTooltip(fields=['Name'], aliases=['Name: '])
+    ).add_to(m)
+    
+    # Add layer control and colormap to the map
+    folium.LayerControl().add_to(m)
+    colormap_tds.add_to(m)  # This line adds the legend to the map
+    
+    return m
 
 # Flask routes
 @server.route('/')
