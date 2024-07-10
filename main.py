@@ -36,7 +36,6 @@ TIME_DURATIONS = {
     '1 Week': timedelta(weeks=1)
 }
 
-# Units for parameters
 UNITS = {
     "pH": "",
     "TDS": "ppm",
@@ -47,7 +46,7 @@ UNITS = {
 
 # Initialize Flask
 server = Flask(__name__)
-server.config['SECRET_KEY'] = os.urandom(24)
+server.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24))
 
 # Initialize Dash
 app = dash.Dash(__name__, server=server, url_base_pathname='/dashboard/')
@@ -58,9 +57,6 @@ def load_geojson():
     geojson_path = "SumanNagar.geojson"
     return gpd.read_file(geojson_path)
 
-gdf = load_geojson()
-
-# Create map
 # Load and process Excel data
 @lru_cache(maxsize=None)
 def load_excel_data():
@@ -146,7 +142,7 @@ def home():
 
 @server.route('/login', methods=['POST'])
 def login():
-    if request.form.get('username') == 'JJM_Haridwar' and request.form.get('password') == 'suman_nagar':
+    if request.form.get('username') == 'JJM_Haridwar' and request.form.get('password') == 'dadupur':
         return redirect(url_for('dash_app'))
     return "Invalid credentials. Please try again."
 
@@ -176,7 +172,7 @@ def create_footer():
             html.P('Dashboard - Powered by ICCW', style={'fontSize': '12px', 'margin': '5px 0'}),
             html.P('Technology Implementation Partner - EyeNet Aqua', style={'fontSize': '12px', 'margin': '5px 0'}),
         ], style={'maxWidth': '1200px', 'margin': '0 auto', 'padding': '0 20px', 'textAlign': 'center'})
-    ], style={'width': '100%', 'backgroundColor': '#f9f9f9', 'padding': '20px 0', 'marginTop': '20px','boxShadow': '0 2px 5px rgba(0,0,0,0.1)'})
+    ], style={'width': '100%', 'backgroundColor': '#f9f9f9', 'padding': '20px 0', 'marginTop': '20px', 'boxShadow': '0 -2px 5px rgba(0,0,0,0.1)'})
 
 # Dash layout
 app.layout = html.Div([
@@ -185,21 +181,21 @@ app.layout = html.Div([
         html.Div(id='error-message', style={'color': '#e74c3c', 'textAlign': 'center', 'margin': '10px 0'}),
         html.Div([html.Div(id=f'source-{param.lower()}', className='value-box') for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']],
                  style={
-        'display': 'flex',
-        'flexWrap': 'wrap',
-        "margin": "15px",
-        'justifyContent': 'space-around',
-        'alignItems': 'center',
-        'margin': '20px 0',
-        'padding': '20px',
-        'backgroundColor': '#ffffff',
-        "font-weight": "bold",
-        "font-size": "30px",
-        "color": "black",
-        "text-align": "center",
-        "box-shadow": "0px 4px 8px rgba(0, 0, 0, 0.1)",
-        'border': '1px solid #7ec1fd',
-        'borderRadius': '10px'}),
+                     'display': 'flex',
+                     'flexWrap': 'wrap',
+                     'justifyContent': 'space-around',
+                     'alignItems': 'center',
+                     'margin': '20px 0',
+                     'padding': '20px',
+                     'backgroundColor': '#ffffff',
+                     'fontWeight': 'bold',
+                     'fontSize': '30px',
+                     'color': 'black',
+                     'textAlign': 'center',
+                     'boxShadow': '0px 4px 8px rgba(0, 0, 0, 0.1)',
+                     'border': '1px solid #7ec1fd',
+                     'borderRadius': '10px'
+                 }),
         html.Div([
             html.Div([
                 html.Div([
@@ -217,7 +213,8 @@ app.layout = html.Div([
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
             html.Div([
                 html.H3("Suman Nagar, Haridwar Map", style={'textAlign': 'center'}),
-                html.Iframe(srcDoc=create_map(), style={'width': '100%', 'height': '600px', 'border': '1px solid #ddd', 'borderRadius': '5px'})
+                html.Iframe(id='map-iframe', srcDoc=create_map().get_root().render(), 
+                            style={'width': '100%', 'height': '600px', 'border': '1px solid #ddd', 'borderRadius': '5px'})
             ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
         ], style={'display': 'flex', 'justifyContent': 'space-between'}),
         html.Div([
@@ -268,9 +265,14 @@ def update_dashboard(n, selected_column, selected_duration):
         
         fig.update_layout(
             title=f'{selected_column} Vs {selected_duration}',
-            xaxis_title='Time (hrs)', yaxis_title=f'{selected_column} ({UNITS[selected_column.split("_")[1]]})', yaxis=dict(range=[y_min, y_max]),
-            height=600, margin=dict(l=50, r=50, t=50, b=50),
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(size=14)
+            xaxis_title='Time (hrs)', 
+            yaxis_title=f'{selected_column} ({UNITS[selected_column.split("_")[1]]})', 
+            yaxis=dict(range=[y_min, y_max]),
+            height=600, 
+            margin=dict(l=50, r=50, t=50, b=50),
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            font=dict(size=14)
         )
 
         latest = df.iloc[-1]
