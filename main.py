@@ -142,7 +142,7 @@ def home():
 
 @server.route('/login', methods=['POST'])
 def login():
-    if request.form.get('username') == 'JJM_Haridwar' and request.form.get('password') == 'dadupur':
+    if request.form.get('username') == 'JJM_Haridwar' and request.form.get('password') == 'suman_nagar':
         return redirect(url_for('dash_app'))
     return "Invalid credentials. Please try again."
 
