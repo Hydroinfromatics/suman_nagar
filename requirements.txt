@@ -35,3 +35,4 @@ zipp==3.18.1
 folium==0.12.1
 geopandas==0.12.1 
 leafmap==0.8.2
+openpyxl==3.1.3
