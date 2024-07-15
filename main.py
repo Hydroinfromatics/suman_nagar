@@ -74,7 +74,7 @@ def create_map():
     
     # Calculate map center
     map_center = [excel_gdf_4326.geometry.y.mean(), excel_gdf_4326.geometry.x.mean()]
-    m = folium.Map(location=map_center, zoom_start=12)
+    m = folium.Map(location=map_center, zoom_start=14)
     
     # Create colormap
     colormap_tds = LinearColormap(
@@ -201,12 +201,12 @@ app.layout = html.Div([
                 html.Div([
                     html.Div([
                         html.P("Select Parameter:", style={'marginBottom': '5px'}),
-                        dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_flow", clearable=False, style={'width': '200px'})
+                        dcc.Dropdown(id="dist_column", options=COLUMNS, value="source_pH", clearable=False, style={'width': '200px'})
                     ], style={'flex': 1, 'marginRight': '10px'}),
                     html.Div([
                         html.P("Select Time Duration:", style={'marginBottom': '5px'}),
                         dcc.Dropdown(id="time_duration", options=[{'label': k, 'value': k} for k in TIME_DURATIONS.keys()],
-                                     value='24 Hours', clearable=False, style={'width': '200px'})
+                                     value='3 Days', clearable=False, style={'width': '200px'})
                     ], style={'flex': 1})
                 ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '20px'}),
                 dcc.Graph(id="graph", style={'height': '600px'})
