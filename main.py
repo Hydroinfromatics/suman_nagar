@@ -1,21 +1,22 @@
 import os
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+from collections import defaultdict
+import requests
 from flask import Flask, request, render_template, redirect, url_for
 import dash
 from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
 import plotly.graph_objs as go
-import pandas as pd
-from datetime import datetime, timedelta
 import geopandas as gpd
 import folium
 from folium.plugins import MarkerCluster
 from branca.colormap import LinearColormap
 from functools import lru_cache
-
 # Import custom modules
 from data_process import process_data
 from get_data import fetch_data_from_api
-
 # Configuration
 API_URL = "https://mongodb-api-hmeu.onrender.com"
 COLUMNS = ["source_pH", "source_TDS", "source_FRC", "source_pressure", "source_flow"]
@@ -35,7 +36,6 @@ TIME_DURATIONS = {
     '3 Days': timedelta(days=3),
     '1 Week': timedelta(weeks=1)
 }
-
 UNITS = {
     "pH": "",
     "TDS": "ppm",
@@ -43,6 +43,72 @@ UNITS = {
     "pressure": "bar",
     "flow": "kL per 10 min"
 }
+
+# Data processing functions
+
+# Analysis functions
+def calculate_pumping_time_and_flow(df):
+    daily_pumping_times = defaultdict(timedelta)
+    daily_flow_sums = defaultdict(float)
+    start_time = None
+    current_day = None
+    
+    for _, row in df.iterrows():
+        timestamp = row['timestamp']
+        source_flow = float(row['source_flow'])
+        day = timestamp.date()
+        
+        if current_day is None:
+            current_day = day
+        if day != current_day:
+            start_time = None
+            current_day = day
+        
+        if source_flow > 0:
+            daily_flow_sums[day] += source_flow
+            if start_time is None:
+                start_time = timestamp
+        elif source_flow == 0 and start_time is not None:
+            end_time = timestamp
+            daily_pumping_times[day] += end_time - start_time
+            start_time = None
+    
+    if start_time is not None:
+        end_time = timestamp
+        daily_pumping_times[day] += end_time - start_time
+    
+    return daily_pumping_times, daily_flow_sums
+
+def format_timedelta(td):
+    total_seconds = int(td.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+def calculate_lpcd(df, population=10000):
+    daily_flow = df.groupby(df['timestamp'].dt.date)['source_flow'].sum() * 1000
+    return daily_flow / population
+
+def analyze_water_quality(df):
+    return {
+        'avg_tds': df['source_TDS'].mean(),
+        'avg_ph': df['source_pH'].mean(),
+        'avg_pressure': df['source_pressure'].mean()
+    }
+
+def plot_trends(df, lpcd):
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    ax1.plot(lpcd.index, lpcd.values)
+    ax1.set_title('LPCD Trend')
+    ax1.set_xlabel('Date')
+    ax1.set_ylabel('LPCD')
+    ax2.plot(df['timestamp'], df['source_flow'])
+    ax2.set_title('Flow Rate Trend')
+    ax2.set_xlabel('Date')
+    ax2.set_ylabel('Flow Rate (m³/hr)')
+    plt.tight_layout()
+    plt.show()
 
 # Initialize Flask
 server = Flask(__name__)
@@ -67,16 +133,11 @@ def load_excel_data():
 
 gdf = load_geojson()
 excel_gdf = load_excel_data()
-
 def create_map():
-    # Convert to EPSG:4326 once
     excel_gdf_4326 = excel_gdf.to_crs(epsg=4326)
-    
-    # Calculate map center
     map_center = [excel_gdf_4326.geometry.y.mean(), excel_gdf_4326.geometry.x.mean()]
     m = folium.Map(location=map_center, zoom_start=14)
     
-    # Create colormap
     colormap_tds = LinearColormap(
         colors=['green', 'yellow', 'red'],
         vmin=excel_gdf_4326['Total Dissolved Solids (TDS)'].min(),
@@ -84,10 +145,8 @@ def create_map():
         caption='Total Dissolved Solids (TDS)'
     )
     
-    # Create marker cluster
     marker_cluster_tds = MarkerCluster(name="TDS Data").add_to(m)
     
-    # Function to create popup content
     def create_popup_content(row):
         return f"""
         Village: {row['Village']}<br>
@@ -99,15 +158,12 @@ def create_map():
         Tap Flow Rate: {row['Tap Flow Rate']} (m3)<br>
         """
     
-    # Add markers for each point
     for idx, row in excel_gdf_4326.iterrows():
-        # Determine the fill color based on the TDS value
         fill_color = colormap_tds(row['Total Dissolved Solids (TDS)'])
         
-        # TDS marker (now a small dot)
         folium.CircleMarker(
             location=[row.geometry.y, row.geometry.x],
-            radius=3,  # Small radius for dot-like appearance
+            radius=3,
             popup=folium.Popup(create_popup_content(row), max_width=300),
             tooltip=row['Village'],
             color=fill_color,
@@ -116,7 +172,6 @@ def create_map():
             weight=2
         ).add_to(marker_cluster_tds)
     
-    # Add Dadupur GeoJSON
     folium.GeoJson(
         gdf,
         name="Dadupur",
@@ -129,9 +184,8 @@ def create_map():
         tooltip=folium.GeoJsonTooltip(fields=['Name'], aliases=['Name: '])
     ).add_to(m)
     
-    # Add layer control and colormap to the map
     folium.LayerControl().add_to(m)
-    colormap_tds.add_to(m)  # This line adds the legend to the map
+    colormap_tds.add_to(m)
     
     return m
 
@@ -178,6 +232,7 @@ def create_footer():
 app.layout = html.Div([
     create_header(),
     html.Div([
+         html.H3("Water Quality", style={'textAlign': 'center','color': '#7ec1fd'}),
         html.Div(id='error-message', style={'color': '#e74c3c', 'textAlign': 'center', 'margin': '10px 0'}),
         html.Div([html.Div(id=f'source-{param.lower()}', className='value-box') for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']],
                  style={
@@ -195,7 +250,28 @@ app.layout = html.Div([
                      'boxShadow': '0px 4px 8px rgba(0, 0, 0, 0.1)',
                      'border': '1px solid #7ec1fd',
                      'borderRadius': '10px'
-                 }),
+                 }),html.H3("Water Quantity", style={'textAlign': 'center','color': '#7ec1fd'}),
+            html.Div([
+            html.Div(id='daily-total-flow', className='metric-box'),
+            html.Div(id='daily-pumping-hours', className='metric-box'),
+            html.Div(id='daily-lpcd', className='metric-box'),
+            html.Div(id='weekly-lpcd', className='metric-box'),
+        ], style={
+            'display': 'flex',
+            'flexWrap': 'wrap',
+            'justifyContent': 'space-around',
+            'alignItems': 'center',
+            'margin': '20px 0',
+            'padding': '20px',
+            'backgroundColor': '#ffffff',
+            'fontWeight': 'bold',
+            'fontSize': '24px',
+            'color': 'black',
+            'textAlign': 'center',
+            'boxShadow': '0px 4px 8px rgba(0, 0, 0, 0.1)',
+            'border': '1px solid #7ec1fd',
+            'borderRadius': '10px'
+        }),
         html.Div([
             html.Div([
                 html.Div([
@@ -206,7 +282,7 @@ app.layout = html.Div([
                     html.Div([
                         html.P("Select Time Duration:", style={'marginBottom': '5px'}),
                         dcc.Dropdown(id="time_duration", options=[{'label': k, 'value': k} for k in TIME_DURATIONS.keys()],
-                                     value='3 Days', clearable=False, style={'width': '200px'})
+                                     value='3 Hours', clearable=False, style={'width': '200px'})
                     ], style={'flex': 1})
                 ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '20px'}),
                 dcc.Graph(id="graph", style={'height': '600px'})
@@ -275,16 +351,86 @@ def update_dashboard(n, selected_column, selected_duration):
             font=dict(size=14)
         )
 
-        latest = df.iloc[-1]
-        value_boxes = [html.Div([
-            html.Div(f"Source {param}", style={'fontSize': '18px', 'marginBottom': '5px'}),
-            html.Div(f"{latest.get(f'source_{param}', 'N/A')}  {UNITS[param]}", style={'fontSize': '18px'})
-        ]) for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']]
+        latest = df.iloc[-1] if not df.empty else pd.Series()
+        value_boxes = []
+        for param in ['pH', 'TDS', 'FRC', 'pressure', 'flow']:
+            value = latest.get(f'source_{param}', 'N/A')
+            if value != 'N/A':
+                value = f"{value:.2f}"
+            value_boxes.append(html.Div([
+                html.Div(f"Source {param}", style={'fontSize': '18px', 'marginBottom': '5px'}),
+                html.Div(f"{value} {UNITS[param]}", style={'fontSize': '18px'})
+            ]))
 
         return [None] + value_boxes + [fig]
     
     except Exception as e:
         return [f"An error occurred: {str(e)}"] + ["Error"] * 5 + [go.Figure()]
+    
+@app.callback(
+    [Output('daily-total-flow', 'children'),
+     Output('daily-pumping-hours', 'children'),
+     Output('daily-lpcd', 'children'),
+     Output('weekly-lpcd', 'children')],
+    [Input('interval-component', 'n_intervals')]
+)
+def update_additional_metrics(n):
+    try:
+        data = fetch_data_from_api(API_URL)
+        df = process_data(data)
+        
+        if df.empty:
+            return ["N/A"] * 4
+
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        today = datetime.now().date()
+        
+        # Filter data for today
+        df_today = df[df['timestamp'].dt.date == today]
+        
+        if df_today.empty:
+            return ["No data for today"] * 4
+
+        # Calculate daily total flow
+        daily_total_flow = df_today['source_flow'].sum()
+        
+        # Calculate daily pumping hours
+        df_today['is_pumping'] = df_today['source_flow'] > 0
+        daily_pumping_hours = df_today['is_pumping'].sum() / 6  # Assuming data is collected every 10 minutes
+        
+        # Calculate LPCD
+        population = 10000  # Adjust this value as needed
+        daily_flow = df_today['source_flow'].sum() * 1000  # Convert to liters
+        daily_lpcd = daily_flow / population if population > 0 else 0
+        
+        # Calculate weekly LPCD
+        one_week_ago = today - timedelta(days=7)
+        df_week = df[(df['timestamp'].dt.date > one_week_ago) & (df['timestamp'].dt.date <= today)]
+        weekly_flow = df_week.groupby(df_week['timestamp'].dt.date)['source_flow'].sum() * 1000  # Convert to liters
+        weekly_lpcd = (weekly_flow / population).mean() if population > 0 else 0
+
+        return [
+            html.Div([
+                html.Div("Today's Total Flow", style={'fontSize': '18px', 'marginBottom': '5px'}),
+                html.Div(f"{daily_total_flow:.2f} kL", style={'fontSize': '24px'})
+            ]),
+            html.Div([
+                html.Div("Today's Pumping Hours", style={'fontSize': '18px', 'marginBottom': '5px'}),
+                html.Div(f"{daily_pumping_hours:.2f} hrs", style={'fontSize': '24px'})
+            ]),
+            html.Div([
+                html.Div("Today's LPCD", style={'fontSize': '18px', 'marginBottom': '5px'}),
+                html.Div(f"{daily_lpcd:.2f}", style={'fontSize': '24px'})
+            ]),
+            html.Div([
+                html.Div(" Week Avg (7-Day) LPCD", style={'fontSize': '18px', 'marginBottom': '5px'}),
+                html.Div(f"{weekly_lpcd:.2f}", style={'fontSize': '24px'})
+            ])
+        ]
+    
+    except Exception as e:
+        print(f"Error updating additional metrics: {str(e)}")
+        return ["Error"] * 4    
 
 @app.callback(
     Output('historical-data-store', 'data'),
